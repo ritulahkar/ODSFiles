@@ -67,7 +67,7 @@ df = read_sheet("report.ods", skipto=3, header=false)
 Get all sheet names in an ODS file.
 
 ```julia
-names = get_sheet_names("workbook.ods")  # ["Sheet1", "Sales", "Products"]
+sheet_names = get_sheet_names("workbook.ods")  # ["Sheet1", "Sales", "Products"]
 ```
 
 ### Multi-Sheet Operations
