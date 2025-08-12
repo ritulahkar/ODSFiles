@@ -4,6 +4,20 @@
 
 ODSFiles.jl provides a comprehensive interface for working with ODS files, supporting both simple operations on individual sheets and advanced operations on multi-sheet workbooks with metadata preservation.
 
+## Installation
+
+Since this package is not yet in the General registry, install directly from GitHub:
+
+```julia
+using Pkg
+Pkg.add("https://github.com/ritulahkar/ODSFiles.jl.git")
+```
+
+Or using the Pkg REPL mode (press `]`):
+```
+add https://github.com/ritulahkar/ODSFiles.jl.git
+```
+
 ## Quick Start
 
 ```julia
@@ -87,8 +101,8 @@ specs = read_sheets("data.ods", sheets=[1, 3])  # by index
 
 # Access data and metadata
 for spec in specs
-    println("Sheet '\$(spec.name)' has \$(nrow(spec.data)) rows")
-    println("Headers included: \$(spec.include_headers)")
+    println("Sheet '$(spec.name)' has $(nrow(spec.data)) rows")
+    println("Headers included: $(spec.include_headers)")
 end
 ```
 
@@ -235,7 +249,7 @@ results = map(specs) do spec
     )
     
     # Return new SheetSpec with processed data
-    SheetSpec("\$(spec.name)_Summary", summary, 
+    SheetSpec("$(spec.name)_Summary", summary, 
              position=spec.position,
              include_headers=true)
 end
@@ -264,3 +278,12 @@ end
 
 write_sheets("monthly_report.ods", filled_specs)
 ```
+
+## Contributing
+
+This package is actively developed. Feel free to open issues or submit pull requests at:
+https://github.com/ritulahkar/ODSFiles.jl
+
+## License
+
+This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
