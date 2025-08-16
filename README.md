@@ -6,16 +6,14 @@ ODSFiles.jl provides a comprehensive interface for working with ODS files, suppo
 
 ## Installation
 
-Since this package is not yet in the General registry, install directly from GitHub:
-
 ```julia
 using Pkg
-Pkg.add("https://github.com/ritulahkar/ODSFiles.jl.git")
+Pkg.add("ODSFiles")
 ```
 
 Or using the Pkg REPL mode (press `]`):
 ```
-add https://github.com/ritulahkar/ODSFiles.jl.git
+add ODSFiles
 ```
 
 ## Quick Start
