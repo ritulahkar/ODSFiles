@@ -7,13 +7,14 @@ src/core/types.jl
     ODSFile
 
 A struct representing an ODS file for reading operations.
-Contains the parsed XML content and available sheets.
+Contains the parsed XML content and available sheets with their positions preserved.
 
 # Fields
 - `filepath::String`: Path to the ODS file
 - `content::String`: Raw XML content
 - `root::EzXML.Node`: Parsed XML root node
 - `sheets::Dict{String, EzXML.Node}`: Dictionary mapping sheet names to XML nodes
+- `sheet_order::Vector{String}`: Ordered list of sheet names preserving original positions
 
 # Constructor
     ODSFile(filepath::String)
@@ -32,6 +33,7 @@ struct ODSFile
     content::String
     root::EzXML.Node
     sheets::Dict{String,EzXML.Node}
+    sheet_order::Vector{String}  # New field to preserve sheet order
 
     function ODSFile(filepath::String)
         if !isfile(filepath)
@@ -66,17 +68,24 @@ struct ODSFile
             "text" => "urn:oasis:names:tc:opendocument:xmlns:text:1.0",
         )
 
-        # Find all table elements (sheets) and create a mapping
+        # Find all table elements (sheets) and create a mapping while preserving order
         tables = findall("//table:table", root, namespace_map)
         sheets = Dict{String,EzXML.Node}()
+        sheet_order = Vector{String}()  # Preserve the original order
+        
+        # Pre-allocate with known size for better performance
+        sizehint!(sheets, length(tables))
+        sizehint!(sheet_order, length(tables))
 
         for (i, table) in enumerate(tables)
             name_attr = findfirst("@table:name", table, namespace_map)
             sheet_name = name_attr !== nothing ? nodecontent(name_attr) : "Sheet$i"
+            
             sheets[sheet_name] = table
+            push!(sheet_order, sheet_name)  # Maintain order
         end
 
-        new(filepath, content_xml, root, sheets)
+        new(filepath, content_xml, root, sheets, sheet_order)
     end
 end
 

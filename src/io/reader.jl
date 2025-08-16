@@ -6,7 +6,7 @@ src/io/reader.jl
 """
     get_sheet_names(filepath_or_ods::Union{String, ODSFile}) -> Vector{String}
 
-Get the names of all sheets in an ODS file.
+Get the names of all sheets in an ODS file in their original order.
 """
 function get_sheet_names(filepath::String)
     ods = ODSFile(filepath)
@@ -14,7 +14,19 @@ function get_sheet_names(filepath::String)
 end
 
 @inline function get_sheet_names(ods::ODSFile)
-    return collect(keys(ods.sheets))
+    # Return sheets in their original order, not dictionary key order
+    return copy(ods.sheet_order)
+end
+
+"""
+    get_sheet_position(ods::ODSFile, sheet_name::String) -> Int
+
+Get the 1-based position of a sheet by name.
+"""
+function get_sheet_position(ods::ODSFile, sheet_name::String)
+    pos = findfirst(==(sheet_name), ods.sheet_order)
+    pos === nothing && throw(ArgumentError("Sheet '$sheet_name' not found"))
+    return pos
 end
 
 """
@@ -55,7 +67,7 @@ end
 """
     read_sheets(filepath_or_ods::Union{String, ODSFile}; kwargs...) -> Vector{SheetSpec}
 
-Read multiple sheets from an ODS file and return as SheetSpec objects.
+Read multiple sheets from an ODS file and return as SheetSpec objects with correct positions.
 """
 function read_sheets(
     filepath::String;
@@ -81,10 +93,8 @@ function read_sheets(
     types::Union{Dict,Bool} = true,
     skipto::Int = 1,
 )
-    sheet_names = get_sheet_names(ods)
-    
     # Determine which sheets to read with optimized selection
-    target_sheets = select_target_sheets(ods, sheets, sheet_names)
+    target_sheets = select_target_sheets(ods, sheets)
 
     # Pre-allocate vector with known size
     sheet_specs = Vector{SheetSpec}(undef, length(target_sheets))
@@ -92,8 +102,8 @@ function read_sheets(
     # Pre-compute actual start row once
     actual_start_row = header ? skipto + 1 : skipto
 
-    # Read each sheet and create SheetSpec objects
-    @inbounds for (pos, sheet_name) in enumerate(target_sheets)
+    # Read each sheet and create SheetSpec objects with correct positions
+    @inbounds for (idx, sheet_name) in enumerate(target_sheets)
         df = read_sheet(
             ods;
             sheet = sheet_name,
@@ -102,10 +112,13 @@ function read_sheets(
             skipto = skipto,
         )
 
-        sheet_specs[pos] = SheetSpec(
+        # Get the original position of this sheet in the file
+        original_position = get_sheet_position(ods, sheet_name)
+
+        sheet_specs[idx] = SheetSpec(
             sheet_name,
             df;
-            position = pos,
+            position = original_position,  # Use the actual position from the ODS file
             include_headers = header,
             data_start_row = actual_start_row,
         )
@@ -145,20 +158,52 @@ end
 end
 
 """
-    select_target_sheets(ods::ODSFile, sheets::Union{Vector{String},Vector{Int},Nothing}, sheet_names::Vector{String})
+    select_target_sheets(ods::ODSFile, sheets::Union{Vector{String},Vector{Int},Nothing})
 
-Optimized sheet selection logic.
+Optimized sheet selection logic that preserves original order.
 """
-@inline function select_target_sheets(ods::ODSFile, sheets::Nothing, sheet_names::Vector{String})
-    return sheet_names
+@inline function select_target_sheets(ods::ODSFile, sheets::Nothing)
+    # Return all sheets in their original order
+    return copy(ods.sheet_order)
 end
 
-@inline function select_target_sheets(ods::ODSFile, sheets::Vector{String}, sheet_names::Vector{String})
+@inline function select_target_sheets(ods::ODSFile, sheets::Vector{String})
     return validate_sheet_names(ods, sheets)
 end
 
-@inline function select_target_sheets(ods::ODSFile, sheets::Vector{Int}, sheet_names::Vector{String})
+@inline function select_target_sheets(ods::ODSFile, sheets::Vector{Int})
     return validate_sheet_indices(ods, sheets)
+end
+
+
+"""
+    validate_sheet_selection(ods::ODSFile, sheet::Union{String,Int,Nothing}) -> EzXML.Node
+
+Validate and return the XML node for the selected sheet.
+"""
+function validate_sheet_selection(ods::ODSFile, sheet::Nothing)
+    # Default to first sheet
+    if isempty(ods.sheet_order)
+        throw(ArgumentError("No sheets found in the ODS file"))
+    end
+    sheet_name = ods.sheet_order[1]
+    return ods.sheets[sheet_name]
+end
+
+function validate_sheet_selection(ods::ODSFile, sheet::String)
+    if !haskey(ods.sheets, sheet)
+        throw(ArgumentError("Sheet '$sheet' not found. Available sheets: $(join(ods.sheet_order, ", "))"))
+    end
+    return ods.sheets[sheet]
+end
+
+function validate_sheet_selection(ods::ODSFile, sheet::Int)
+    max_sheets = length(ods.sheet_order)
+    if sheet < 1 || sheet > max_sheets
+        throw(ArgumentError("Sheet index $sheet out of range. File has $max_sheets sheets."))
+    end
+    sheet_name = ods.sheet_order[sheet]
+    return ods.sheets[sheet_name]
 end
 
 """
@@ -196,8 +241,7 @@ function read_sheets_parallel(
 )
     # Open ODS file once
     ods = filepath_or_ods isa String ? ODSFile(filepath_or_ods) : filepath_or_ods
-    sheet_names = get_sheet_names(ods)
-    target_sheets = select_target_sheets(ods, sheets, sheet_names)
+    target_sheets = select_target_sheets(ods, sheets)
     
     # Use parallel processing only if beneficial
     if length(target_sheets) >= min_parallel_sheets && Threads.nthreads() > 1
@@ -228,10 +272,13 @@ function read_sheets_threaded(ods::ODSFile, target_sheets::Vector{String}, heade
             skipto = skipto,
         )
 
+        # Get the original position of this sheet in the file
+        original_position = get_sheet_position(ods, sheet_name)
+
         @inbounds sheet_specs[i] = SheetSpec(
             sheet_name,
             df;
-            position = i,
+            position = original_position,  # Use actual position, not loop index
             include_headers = header,
             data_start_row = actual_start_row,
         )
@@ -255,8 +302,7 @@ function read_sheets_lazy(
 )
     # Store parameters and file reference
     ods = filepath_or_ods isa String ? ODSFile(filepath_or_ods) : filepath_or_ods
-    sheet_names = get_sheet_names(ods)
-    target_sheets = select_target_sheets(ods, sheets, sheet_names)
+    target_sheets = select_target_sheets(ods, sheets)
     
     # Create lazy loaders
     lazy_dict = Dict{String, Function}()
